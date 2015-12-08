@@ -1,0 +1,32 @@
+<?xml version="1.0"?>
+<package>
+  <name>nord_stupid</name>
+  <version>0.0.1</version>
+  <description>Mission control</description>
+
+  <maintainer email="bened@kth.se">Magnus Thor Benediktsson</maintainer>
+  <maintainer email="gsands@kth.se">Gustav Sandström</maintainer>
+  <maintainer email="tolundi@kth.se">Tobias Lundin</maintainer>
+  <maintainer email="lucasas@kth.se">Lucas Åström</maintainer>
+
+  <license>MIT</license>
+
+
+  <url>https://github.com/Jinxit/nordic-robotics</url>
+
+
+  <buildtool_depend>catkin</buildtool_depend>
+  <build_depend>roscpp</build_depend>
+  <build_depend>std_msgs</build_depend>
+  <build_depend>nord_messages</build_depend>
+  <build_depend>roslib</build_depend>
+  <run_depend>roscpp</run_depend>
+  <run_depend>std_msgs</run_depend>
+  <run_depend>message_runtime</run_depend>
+  <run_depend>nord_messages</run_depend>
+  <run_depend>roslib</run_depend>
+
+
+  <export>
+  </export>
+</package>

@@ -1,0 +1,6 @@
+*~
+seqsel/CATKIN_IGNORE
+seqsel/Main
+*.hi
+*.o
+src/seqsel/*.hpp
