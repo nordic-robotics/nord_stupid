@@ -20,6 +20,18 @@
 #include "nord_messages/MotorTwist.h"
 #include "nord_messages/NextNode.h"
 #include "std_msgs/Int64.h"
+#include "point.hpp"
+#include "common.hpp"
+#include "visualization_msgs/Marker.h"
+#include "nord_messages/Vector2.h"
+#include "nord_messages/PlanSrv.h"
+#include "nord_messages/PromptEvidenceReportingSrv.h"
+#include "nord_messages/EvidenceSrv.h"
+#include "nord_messages/NextNode.h"
+#include "nord_messages/MotorTwist.h"
+#include "nord_messages/PoseEstimate.h"
+#include "nord_messages/ObjectArray.h"
+#include "std_msgs/Empty.h"
 
 std::vector<std::pair<std::string, point<2>>> load_objects(std::string filename)
 {
@@ -40,6 +52,52 @@ std::vector<std::pair<std::string, point<2>>> load_objects(std::string filename)
     return objects;
 }
 
+std::string classify(size_t id, std::vector<std::pair<size_t, point<2>>>& unknown, ros::NodeHandle& n)
+{
+    std::cout << "classify" << std::endl;
+    ros::ServiceClient client = n.serviceClient<nord_messages::PromptEvidenceReportingSrv>(
+        "/nord/vision/prompt_evidence_reporting_service", false);
+    nord_messages::PromptEvidenceReportingSrv srv;
+    srv.request.id = id;
+    if (!client.call(srv))
+    {
+        std::cout << "call failed!" << std::endl;
+        return "";
+    }
+    std::string new_class = srv.response.name;
+
+    if (new_class == "")
+    {
+        std::cout << "classification failed!" << std::endl;
+        return "";
+    }
+
+    point<2> obj_location(-1, -1);
+    for (size_t i = 0; i < unknown.size(); i++)
+    {
+        if (unknown[i].first == id)
+        {
+            obj_location = unknown[i].second;
+        }
+    }
+
+    std::cout << "snapping evidence" << std::endl;
+    ros::ServiceClient client2 = n.serviceClient<nord_messages::EvidenceSrv>(
+        "/nord/evidence_service", false);
+    nord_messages::EvidenceSrv srv2;
+    // fill in
+    srv2.request.data.id = id;
+    srv2.request.data.x = obj_location.x();
+    srv2.request.data.y = obj_location.y();
+    srv2.request.data.objectId.data = new_class;
+    if (!client2.call(srv2))
+    {
+        std::cout << "evidence call failed!" << std::endl;
+    }
+
+    return new_class;
+}
+
 int main(int argc, char** argv)
 {
     using namespace std::literals;
@@ -56,6 +114,9 @@ int main(int argc, char** argv)
     auto objects = load_objects(ros::package::getPath("nord_vision")+"/data/objects.txt");
     bool planned_escape = false;
     bool position_known = false;
+    bool seen_past_objects = true;
+    std::set<size_t> seen_ids;
+    std::vector<std::pair<size_t, point<2>>> unknown;
 
     ros::Publisher point_pub(n.advertise<nord_messages::NextNode>("/nord/control/point", 10));
     ros::Publisher espeak_pub(n.advertise<std_msgs::String>("/espeak/string", 10));
@@ -83,7 +144,7 @@ int main(int argc, char** argv)
                 }
                 if (path.size() > 0 && dijkstra_path.size() == 0)
                 {
-                    if ((path.front() - position).length() < 0.1)
+                    if ((path.front() - position).length() < 0.2)
                         path.erase(path.begin());
                     if (path.size() > 0)
                     {
@@ -102,18 +163,55 @@ int main(int argc, char** argv)
                             time_left = 0;
                         }
                     }
-                }
+                
 
-                for (size_t i = 0; i < objects.size(); i++)
+                for (int i = 0; i < objects.size(); i++)
                 {
                     if ((objects[i].second - position).length() < 0.5)
                     {
+                        seen_past_objects = true;
                         std_msgs::String msg;
                         msg.data = objects[i].first;
                         espeak_pub.publish(msg);
                         objects.erase(objects.begin() + i);
                         i--;
                     }
+                }
+                if (!seen_past_objects)
+                {
+                    for (int i = 0; i < unknown.size(); i++)
+                    {
+                        if ((position - unknown[i].second).length() < 1.0)
+                        {
+                            auto name = classify(unknown[i].first, unknown, n);
+
+                            if (name != "")
+                            {
+                                std_msgs::String msg;
+                                msg.data = name;
+                                espeak_pub.publish(msg);
+                                unknown.erase(unknown.begin() + i);
+                                i--;
+                            }
+                        }
+                    }
+                }
+                
+            }
+        }
+    }));
+
+    ros::Subscriber obj_sub(n.subscribe<nord_messages::ObjectArray>("/nord/vision/igo", 9,
+        [&](const nord_messages::ObjectArray::ConstPtr& msg) {
+            std::cout << "got obj" << std::endl;
+            unknown.clear();
+            unknown.reserve(msg->data.size());
+            for (auto& d : msg->data)
+            {
+                if (seen_ids.find(d.id) == seen_ids.end())
+                {
+                    unknown.push_back(std::make_pair(d.id, point<2>(d.x, d.y)));
+                    seen_ids.insert(d.id);
                 }
             }
     }));
